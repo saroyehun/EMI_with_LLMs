@@ -1,0 +1,436 @@
+---
+title: "Analysis of EMI DDI, and TPL series"
+
+output: pdf_document
+---
+```{r}
+library(dplyr)
+library(zoo)
+library(Hmisc)
+library(lmtest)
+library(tseries)
+library(ggplot2)
+library(ggrepel)
+library(stargazer)
+library(car)
+library(sandwich)
+library(clubSandwich)
+library(ggeffects)
+library(margins)
+library(marginaleffects)
+library(boot)
+library(kableExtra)
+library(modelsummary)
+library(visreg)
+library(tinytable)
+set.seed(1234)
+
+output_path <- "./output"
+f <- function(x) format(x, digits = 3, nsmall = 2)
+df_us <- read.csv("../aggregate_data/US/agg_sbertllms_gt1945.csv")
+df_de_west <- read.csv("../aggregate_data/DE/agg_sbertllms_lt1990.csv")
+df_de_ge1990 <- read.csv("../aggregate_data/DE/agg_sbertllms_ge1990.csv")
+df_it <- read.csv("../aggregate_data/IT/agg_sbertllms_gt1945_attributed.csv")
+df_is <- read.csv("../aggregate_data/IS/agg_sbertllms_gt1945.csv")
+df_pl <- read.csv("../aggregate_data/PL/agg_sbertllms_gt1989.csv")
+df_tr <- read.csv("../aggregate_data//TR/agg_sbertllms_gt1981_attributed.csv")
+
+df_us <- df_us |>
+  arrange(year, .by_group = TRUE) |>
+  mutate(
+    period_index = row_number(),
+    emi = evidence_intuition_diffpool_score_mean,
+    ddi_lag1 = dplyr::lag(ddi, 1),
+    emi_lag1 = dplyr::lag(emi, 1),
+    tpl_lag1 = dplyr::lag(transparent_laws, 1),
+    log_gdp = log(gdp_per_capita)
+  ) |>
+  ungroup()
+
+df_de_ge1990 <- df_de_ge1990 |>
+  arrange(year, .by_group = TRUE) |>
+  mutate(
+    period_index = row_number(),
+    emi = evidence_intuition_diffpool_score_mean,
+    ddi_lag1 = dplyr::lag(ddi, 1),
+    emi_lag1 = dplyr::lag(emi, 1),
+    tpl_lag1 = dplyr::lag(transparent_laws, 1),
+    log_gdp = log(gdp_per_capita)
+  ) |>
+  ungroup()
+
+df_de_west <- df_de_west |>
+  arrange(year, .by_group = TRUE) |>
+  mutate(
+    period_index = row_number(),
+    emi = evidence_intuition_diffpool_score_mean,
+    ddi_lag1 = dplyr::lag(ddi, 1),
+    emi_lag1 = dplyr::lag(emi, 1),
+    tpl_lag1 = dplyr::lag(transparent_laws, 1),
+    log_gdp = log(gdp_per_capita)
+  ) |>
+  ungroup()
+
+df_it <- df_it |>
+  arrange(year, .by_group = TRUE) |>
+  mutate(
+    period_index = row_number(),
+    emi = evidence_intuition_diffpool_score_mean,
+    ddi_lag1 = dplyr::lag(ddi, 1),
+    emi_lag1 = dplyr::lag(emi, 1),
+    tpl_lag1 = dplyr::lag(transparent_laws, 1),
+    log_gdp = log(gdp_per_capita)
+  ) |>
+  ungroup()
+
+df_is <- df_is |>
+  arrange(year, .by_group = TRUE) |>
+  mutate(
+    period_index = row_number(),
+    emi = evidence_intuition_diffpool_score_mean,
+    ddi_lag1 = dplyr::lag(ddi, 1),
+    emi_lag1 = dplyr::lag(emi, 1),
+    tpl_lag1 = dplyr::lag(transparent_laws, 1),
+    log_gdp = log(gdp_per_capita)
+  ) |>
+  ungroup()
+
+df_pl <- df_pl |>
+  arrange(year, .by_group = TRUE) |>
+  mutate(
+    period_index = row_number(),
+    emi = evidence_intuition_diffpool_score_mean,
+    ddi_lag1 = dplyr::lag(ddi, 1),
+    emi_lag1 = dplyr::lag(emi, 1),
+    tpl_lag1 = dplyr::lag(transparent_laws, 1),
+    log_gdp = log(gdp_per_capita)
+  ) |>
+  ungroup()
+
+df_tr <- df_tr |>
+  arrange(year, .by_group = TRUE) |>
+  mutate(
+    period_index = row_number(),
+    emi = evidence_intuition_diffpool_score_mean,
+    ddi_lag1 = dplyr::lag(ddi, 1),
+    emi_lag1 = dplyr::lag(emi, 1),
+    tpl_lag1 = dplyr::lag(transparent_laws, 1),
+    log_gdp = log(gdp_per_capita)
+  ) |>
+  ungroup()
+
+cor.test(df_us$emi, df_us$ddi)
+cor.test(df_de_ge1990$emi, df_de_ge1990$ddi)
+cor.test(df_de_west$emi, df_de_west$ddi)
+cor.test(df_it$emi, df_it$ddi)
+cor.test(df_is$emi, df_is$ddi)
+cor.test(df_pl$emi, df_pl$ddi)
+cor.test(df_tr$emi, df_tr$ddi)
+
+
+# pooled 
+df_all <- bind_rows(
+  "United States" = df_us,
+  "Italy" = df_it,
+  "Germany" = df_de_ge1990,
+  "West Germany" = df_de_west,
+  "Iceland" = df_is,
+  "Poland" = df_pl,
+  "Turkey" = df_tr,
+  .id = "country"
+)
+df_all$clientelism_rev <- -df_all$clientelism_index
+cor.test(df_all$emi, df_all$ddi)
+
+#plotting theme
+theme_house <- theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  )
+theme_set(theme_house)
+
+#model output format
+f_est <- function(x) formatC(x, format="f", digits=3)
+f_p <- function(x) {
+  ifelse(
+    x < 0.001,
+    formatC(x, format = "e", digits = 3),
+    formatC(x, format = "f", digits = 3)
+  )
+}
+
+
+df_all$country <- factor(df_all$country)
+df_all$country <- relevel(df_all$country, ref = "United States")
+df_all$year <- factor(df_all$year)
+
+emi_model <- lm(emi ~ year + ddi + country, data = df_all)
+summary(emi_model)
+vif(emi_model)
+adf.test(residuals(emi_model))
+kpss.test(residuals(emi_model))
+jarque.bera.test(residuals(emi_model))
+
+#plot
+p_vis <- visreg(emi_model, "ddi", gg = TRUE, xlab="DDI", ylab="EMI", line.par = list(col = "black"))+
+  theme_house +
+  scale_color_manual(values = "black") +
+  scale_fill_manual(values = "grey70")
+
+ggsave(filename = file.path(output_path, "EMI-DDI-model.pdf"), plot = p_vis, width = 6.5, height = 3, dpi = 300, device="pdf")
+
+# ddi lag1
+emi_model_ddilag1 <- lm(emi ~ year + ddi_lag1 + country, data = df_all)
+summary(emi_model_ddilag1)
+vif(emi_model_ddilag1)
+adf.test(residuals(emi_model_ddilag1))
+kpss.test(residuals(emi_model_ddilag1))
+jarque.bera.test(residuals(emi_model_ddilag1))
+
+p_vis <- visreg(emi_model_ddilag1, "ddi_lag1", gg = TRUE,  xlab="DDI(previous year)", ylab="EMI", line.par = list(col = "black"))+
+  theme_house +
+  scale_color_manual(values = "black") +
+  scale_fill_manual(values = "grey70")
+
+ggsave(filename = file.path(output_path, "EMI-DDIprevious-model.pdf"), plot = p_vis, width = 6.5, height = 3, dpi = 300, device="pdf")
+
+modelsummary(
+  list(
+    "EMI" = emi_model,
+    "EMI" = emi_model_ddilag1
+  ),
+  coef_omit = "year|country",
+  gof_omit="AIC|BIC|RMSE|Log.Lik.",
+    output = "output/EMI-DDI-LM_summary.html",
+  fmt = NULL,
+  estimate  = "{f_est(estimate)} [{f_est(conf.low)}, {f_est(conf.high)}]",
+  statistic = "p={f_p(p.value)}", conf_level=0.95,
+  notes = "Values in square brackets represent 95% confidence intervals."
+) 
+
+tex <- modelsummary(
+  list(
+    "EMI" = emi_model,
+    "EMI" = emi_model_ddilag1
+  ),
+  coef_omit = "year|country",
+  gof_omit="AIC|BIC|RMSE|Log.Lik.",
+  output = "tinytable",
+  fmt = NULL,
+  estimate  = "{f_est(estimate)} [{f_est(conf.low)}, {f_est(conf.high)}]",
+  statistic = "p={f_p(p.value)}", conf_level=0.95,
+  notes = "Values in square brackets represent 95% confidence intervals."
+)|>
+  theme_tt("tabular")
+  save_tt(tex, "./output/EMI-DDI-LM_summary.tex", overwrite = TRUE)
+
+ddi_model <- lm(ddi ~ year + emi + country , data = df_all)
+summary(ddi_model)
+vif(ddi_model)
+adf.test(residuals(ddi_model))
+kpss.test(residuals(ddi_model))
+jarque.bera.test(residuals(ddi_model))
+
+p_vis <- visreg(ddi_model, "emi", gg = TRUE,  xlab="EMI", ylab="DDI", line.par = list(col = "black"))+
+  theme_house +
+  scale_color_manual(values = "black") +
+  scale_fill_manual(values = "grey70")
+
+ggsave(filename = file.path(output_path, "DDI-EMI-model.pdf"), plot = p_vis, width = 6.5, height = 3, dpi = 300, device="pdf")
+
+#emi lag1
+ddi_model_emilag1 <- lm(ddi ~ year + emi_lag1 + country , data = df_all)
+summary(ddi_model_emilag1)
+vif(ddi_model_emilag1)
+adf.test(residuals(ddi_model_emilag1))
+kpss.test(residuals(ddi_model_emilag1))
+jarque.bera.test(residuals(ddi_model_emilag1))
+
+p_vis <- visreg(ddi_model_emilag1, "emi_lag1", gg = TRUE,  xlab="EMI(previous year)", ylab="DDI", line.par = list(col = "black"))+
+  theme_house +
+  scale_color_manual(values = "black") +
+  scale_fill_manual(values = "grey70")
+
+ggsave(filename = file.path(output_path, "DDI-EMIprevious-model.pdf"), plot = p_vis, width = 6.5, height = 3, dpi = 300, device="pdf")
+
+modelsummary(
+  list(
+    "DDI" = ddi_model,
+    "DDI" = ddi_model_emilag1
+  ),
+  coef_omit = "year|country",
+  gof_omit="AIC|BIC|RMSE|Log.Lik.",
+    output = "output/DDI-EMI-LM_summary.html",
+   fmt = NULL,
+  estimate  = "{f_est(estimate)} [{f_est(conf.low)}, {f_est(conf.high)}]",
+  statistic = "p={f_p(p.value)}",
+  conf_level=0.95,
+  notes = "Values in square brackets represent 95% confidence intervals."
+)
+
+tex <- modelsummary(
+  list(
+    "DDI" = ddi_model,
+    "DDI" = ddi_model_emilag1
+  ),
+  coef_omit = "year|country",
+  gof_omit="AIC|BIC|RMSE|Log.Lik.",
+  output = "tinytable",
+  fmt = NULL,
+  estimate  = "{f_est(estimate)} [{f_est(conf.low)}, {f_est(conf.high)}]",
+  statistic = "p={f_p(p.value)}", conf_level=0.95,
+  notes = "Values in square brackets represent 95% confidence intervals."
+)|>
+  theme_tt("tabular")
+  save_tt(tex, "output/DDI-EMI-LM_summary.tex", overwrite = TRUE)
+
+#transparent laws 
+
+# tpl baseline model
+tpl_model_ddi_noemi <- lm(transparent_laws ~ year + country 
+                    + clientelism_rev + judiciary_index + log_gdp + ddi, data = df_all)
+summary(tpl_model_ddi_noemi)
+vif(tpl_model_ddi_noemi)
+adf.test(residuals(tpl_model_ddi_noemi))
+kpss.test(residuals(tpl_model_ddi_noemi))
+jarque.bera.test(residuals(tpl_model_ddi_noemi))
+
+#emi sig
+tpl_model_ddi <- lm(transparent_laws ~ year + emi  + country 
+                    + clientelism_rev + judiciary_index + log_gdp + ddi, data = df_all)
+summary(tpl_model_ddi)
+vif(tpl_model_ddi)
+adf.test(residuals(tpl_model_ddi))
+kpss.test(residuals(tpl_model_ddi))
+jarque.bera.test(residuals(tpl_model_ddi))
+#JB fails
+
+bootf <- function(df, indices)
+{
+  tpl_model_ddi <- lm(transparent_laws ~ year + emi  + country 
+                    + clientelism_rev + judiciary_index + log_gdp + ddi, data = df,
+                    subset=indices
+                    )
+  return(tpl_model_ddi$coefficients['emi'])
+}
+boots <- boot(df_all, bootf, R=10000)
+quantile(boots$t, p=c(0.025, 0.5, 0.975))  # to verify, we perform a bootstrapping test, lower part of CI still positive
+lrtest(tpl_model_ddi_noemi, tpl_model_ddi)
+
+#plot TPL model
+emi_seq <- seq(min(df_all$emi, na.rm=TRUE), max(df_all$emi, na.rm=TRUE), length.out=50)
+mf <- model.frame(tpl_model_ddi)
+nd <- mf[rep(seq_len(nrow(mf)), each = length(emi_seq)), , drop = FALSE]
+nd$emi <- rep(emi_seq, times = nrow(mf))
+pred_all <- predictions(
+  tpl_model_ddi,
+  newdata = nd
+)
+pred <- aggregate(cbind(estimate, conf.low, conf.high) ~ emi, data = pred_all, mean)
+ggplot() +
+  geom_point(data = df_all, aes(y=transparent_laws, x=emi), alpha = 0.2, size = 1) +
+  geom_ribbon(data = pred, aes(x=emi, ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_line(data = pred, aes(x=emi, y = estimate), linewidth = 1) +
+  # theme_minimal() +
+  labs(x = "EMI", y = "Predicted Transparent Laws")
+ggsave(filename = file.path(output_path, "TPL-EMI-model.pdf"), width = 6.5, height = 3, dpi = 300, device="pdf")
+
+df_common <- df_all[
+  complete.cases(df_all[, c(
+    "transparent_laws", "year", "emi_lag1", "country",
+    "clientelism_rev", "judiciary_index", "log_gdp", "ddi"
+  )]),
+]
+
+tpl_model_ddi_emilag1_base <- lm(transparent_laws ~ year + country 
+                    + clientelism_rev + judiciary_index + log_gdp + ddi, data = df_common)
+
+tpl_model_ddi_emilag1 <- lm(transparent_laws ~ year + emi_lag1 + country 
+                    + clientelism_rev + judiciary_index + log_gdp + ddi, data = df_common)
+
+lrtest(tpl_model_ddi_emilag1_base, tpl_model_ddi_emilag1)
+
+summary(tpl_model_ddi_emilag1)
+vif(tpl_model_ddi_emilag1)
+adf.test(residuals(tpl_model_ddi_emilag1))
+kpss.test(residuals(tpl_model_ddi_emilag1))
+jarque.bera.test(residuals(tpl_model_ddi_emilag1))
+#JB fails
+bootf <- function(df, indices)
+{
+  tpl_model_ddi_emilag1 <- lm(transparent_laws ~ year + emi_lag1  + country 
+                    + clientelism_rev + judiciary_index + log_gdp + ddi, data = df,
+                    subset=indices
+                    )
+  return(tpl_model_ddi_emilag1$coefficients['emi_lag1'])
+}
+boots <- boot(df_common, bootf, R=10000)
+quantile(boots$t, p=c(0.025, 0.5, 0.975))  # to verify, we perform a bootstrapping test, lower part of CI still positive
+
+#plot emi_lag1
+emi_seq <- seq(min(df_all$emi_lag1, na.rm=TRUE), max(df_all$emi_lag1, na.rm=TRUE), length.out=50)
+mf <- model.frame(tpl_model_ddi_emilag1)
+nd <- mf[rep(seq_len(nrow(mf)), each = length(emi_seq)), , drop = FALSE]
+nd$emi_lag1 <- rep(emi_seq, times = nrow(mf))
+pred_all <- predictions(
+  tpl_model_ddi_emilag1,
+  newdata = nd
+)
+pred <- aggregate(cbind(estimate, conf.low, conf.high) ~ emi_lag1, data = pred_all, mean)
+ggplot() +
+  geom_point(data = df_all, aes(y=transparent_laws, x=emi_lag1), alpha = 0.2, size = 1) +
+  geom_ribbon(data = pred, aes(x=emi_lag1, ymin = conf.low, ymax = conf.high), alpha = 0.2) +
+  geom_line(data = pred, aes(x=emi_lag1, y = estimate), linewidth = 1) +
+  # theme_minimal() +
+  labs(x = "EMI(previous year)", y = "Predicted Transparent Laws")
+ggsave(filename = file.path(output_path, "TPL-EMIprevious-model.pdf"), width = 6.5, height = 3, dpi = 300, device="pdf")
+
+modelsummary(
+  list(
+    "TPL index" = tpl_model_ddi_noemi,
+    "TPL index" = tpl_model_ddi,
+    "TPL index" = tpl_model_ddi_emilag1_base,
+    "TPL index" = tpl_model_ddi_emilag1
+  ),
+  coef_omit = "year|country",
+  gof_omit="AIC|BIC|RMSE|Log.Lik.",
+    output = "output/TPL-EMI-LM_summary.html",
+   fmt = NULL,
+  estimate  = "{f_est(estimate)} [{f_est(conf.low)}, {f_est(conf.high)}]",
+  statistic = "p={f_p(p.value)}", conf_level=0.95,
+  notes = "Values in square brackets represent 95% confidence intervals."
+)
+
+tex <- modelsummary(
+  list(
+    "TPL index" = tpl_model_ddi_noemi,
+    "TPL index" = tpl_model_ddi,
+    "TPL index" = tpl_model_ddi_emilag1_base,
+    "TPL index" = tpl_model_ddi_emilag1
+  ),
+  coef_omit = "year|country",
+  gof_omit="AIC|BIC|RMSE|Log.Lik.",
+  output = "tinytable",
+  fmt = NULL,
+  estimate  = "{f_est(estimate)} [{f_est(conf.low)}, {f_est(conf.high)}]",
+  statistic = "p={f_p(p.value)}", conf_level=0.95,
+  notes = "Values in square brackets represent 95% confidence intervals."
+)|>
+  theme_tt("tabular")
+  save_tt(tex, "output/TPL-EMI-LM_summary.tex", overwrite = TRUE)
+```
+# proc
+```{r}
+library(pROC)
+
+df_prolific <- read.csv("../aggregate_data/prolific_ratings_emiw2v_llms_sbert.csv")
+
+roc_sbertllms <- roc(df_prolific$label, df_prolific$rating_emb_pool)
+roc_w2v <- roc(df_prolific$label, df_prolific$emi_w2v)
+
+roc.test(roc_sbertllms, roc_w2v, method = "delong")
+```
+
