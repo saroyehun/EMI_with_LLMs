@@ -1,6 +1,6 @@
 ---
 title: "Analysis of EMI DDI, and TPL series"
-
+author: "Segun Aroyehun"
 output: pdf_document
 ---
 ```{r}
