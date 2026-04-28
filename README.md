@@ -12,5 +12,13 @@ This repository contains the code used for the analysis and results reported in 
 
 
 ## Citation
-TBA
+```
+@article{aroyehun2026epistemic,
+  title={Epistemic orientation in parliamentary discourse is associated with deliberative democracy},
+  author={Aroyehun, Segun and Lewandowsky, Stephan and Garcia, David},
+  journal={arXiv preprint arXiv:2604.19699},
+  year={2026}
+}
+
+```
   
